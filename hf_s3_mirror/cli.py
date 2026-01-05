@@ -25,30 +25,24 @@ def upload(
     repo_id: str = typer.Argument(..., help="HuggingFace repository ID (e.g., 'lab-ii/whisper-large-v3')"),
     bucket: Optional[str] = typer.Option(None, "--bucket", "-b", help="S3 bucket name"),
     prefix: str = typer.Option("", "--prefix", "-p", help="S3 prefix path"),
-    cache_dir: Optional[str] = typer.Option(None, "--cache", "-c", help="Local cache directory (uses temp if not set)"),
 ) -> None:
     """Download model from HuggingFace and upload to S3."""
     bucket = bucket or get_default_bucket()
-    s3_path = f"s3://{bucket}/{prefix}".rstrip("/") + "/"
+    model_name = "models--" + repo_id.replace("/", "--")
+    s3_path = f"s3://{bucket}/{prefix}/{model_name}".replace("//", "/").replace("s3:/", "s3://")
 
     typer.echo(f"Downloading {repo_id} from HuggingFace...")
 
-    if cache_dir:
-        local_dir = Path(cache_dir)
-        local_dir.mkdir(parents=True, exist_ok=True)
-        snapshot_download(repo_id=repo_id, cache_dir=str(local_dir))
-        _upload_cache_to_s3(local_dir, s3_path)
-    else:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            local_dir = Path(tmpdir)
-            snapshot_download(repo_id=repo_id, cache_dir=str(local_dir))
-            _upload_cache_to_s3(local_dir, s3_path)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_dir = Path(tmpdir)
+        snapshot_download(repo_id=repo_id, local_dir=str(local_dir))
+        _upload_to_s3(local_dir, s3_path)
 
     typer.echo(f"Successfully uploaded {repo_id} to {s3_path}")
 
 
-def _upload_cache_to_s3(local_dir: Path, s3_path: str) -> None:
-    """Upload cached model to S3."""
+def _upload_to_s3(local_dir: Path, s3_path: str) -> None:
+    """Upload local directory to S3."""
     s3 = get_s3_client()
 
     typer.echo(f"Uploading to {s3_path}...")
@@ -116,6 +110,56 @@ def list_bucket(
             typer.echo(item)
     except Exception as e:
         typer.echo(f"Error listing bucket: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
+def delete(
+    path: str = typer.Argument(..., help="Path to delete (e.g., 'models--lab-ii--whisper' or repo_id 'lab-ii/whisper')"),
+    bucket: Optional[str] = typer.Option(None, "--bucket", "-b", help="S3 bucket name"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+) -> None:
+    """Delete folder from S3 bucket."""
+    bucket = bucket or get_default_bucket()
+
+    # Convert repo_id format to S3 path format
+    if "/" in path and not path.startswith("models--"):
+        path = "models--" + path.replace("/", "--")
+
+    s3_path = f"{bucket}/{path}"
+    s3 = get_s3_client()
+
+    # Check if path exists and list contents
+    try:
+        contents = s3.ls(s3_path)
+        if not contents:
+            typer.echo(f"Path not found: {s3_path}", err=True)
+            raise typer.Exit(1)
+    except FileNotFoundError:
+        typer.echo(f"Path not found: {s3_path}", err=True)
+        raise typer.Exit(1)
+
+    # Show what will be deleted
+    typer.echo(f"\nWill delete: {s3_path}")
+    typer.echo(f"Contents ({len(contents)} items):")
+    for item in contents[:10]:
+        typer.echo(f"  - {item}")
+    if len(contents) > 10:
+        typer.echo(f"  ... and {len(contents) - 10} more items")
+
+    # Confirmation
+    if not force:
+        confirm = typer.confirm("\nAre you sure you want to delete?")
+        if not confirm:
+            typer.echo("Cancelled")
+            raise typer.Exit(0)
+
+    # Delete
+    try:
+        s3.rm(s3_path, recursive=True)
+        typer.echo(f"Successfully deleted {s3_path}")
+    except Exception as e:
+        typer.echo(f"Error deleting: {e}", err=True)
         raise typer.Exit(1)
 
 
