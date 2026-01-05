@@ -1,9 +1,10 @@
 [project]
 name = "hf-s3-mirror"
-version = "0.4.0"
+version = "0.4.1"
 description = "CLI tool for uploading HuggingFace models to S3 storage"
+readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = "Apache-2.0"
 authors = [
     { name = "suronek" }
 ]
@@ -12,7 +13,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -26,7 +27,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Suro4ek/hf-s3-mirror"
+Repository = "https://github.com/Suro4ek/hf_s3_mirror"
 
 [project.scripts]
 hf-s3 = "hf_s3_mirror.cli:app"
